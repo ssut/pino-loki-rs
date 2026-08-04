@@ -85,7 +85,7 @@ jobs:
           pnpm publish . --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: artifacts/**/*.tar.gz
           generate_release_notes: true

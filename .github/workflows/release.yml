@@ -1,0 +1,91 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+            pkg: linux-x64-gnu
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-24.04
+            pkg: linux-x64-musl
+            musl: true
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+            pkg: linux-arm64-gnu
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
+            pkg: linux-arm64-musl
+            musl: true
+          - target: aarch64-apple-darwin
+            runner: macos-15
+            pkg: darwin-arm64
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+            pkg: darwin-x64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - if: matrix.musl
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - run: cargo build --release -p pino-loki-rs --target ${{ matrix.target }}
+      - run: |
+          target/${{ matrix.target }}/release/pino-loki-rs --version || true
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/pino-loki-rs dist/
+          tar -C dist -czf pino-loki-rs-${{ matrix.pkg }}.tar.gz pino-loki-rs
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bin-${{ matrix.pkg }}
+          path: pino-loki-rs-${{ matrix.pkg }}.tar.gz
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+      - run: node scripts/stamp-version.mjs "${GITHUB_REF_NAME#v}"
+      - run: |
+          for dir in npm/*/; do
+            pkg=$(basename "$dir")
+            tar -xzf "artifacts/bin-$pkg/pino-loki-rs-$pkg.tar.gz" -C "$dir"
+            chmod +x "$dir/pino-loki-rs"
+          done
+      - run: |
+          for dir in npm/*/; do
+            pnpm publish "$dir" --access public --no-git-checks
+          done
+          pnpm publish . --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*.tar.gz
+          generate_release_notes: true

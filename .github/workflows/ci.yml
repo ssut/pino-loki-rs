@@ -29,3 +29,15 @@ jobs:
             node --check "$f"
           done
       - run: node --test test/*.test.mjs
+
+  e2e:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v6.0.9
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: bash scripts/e2e-pack.sh

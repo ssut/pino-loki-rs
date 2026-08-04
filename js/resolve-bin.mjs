@@ -1,6 +1,18 @@
+import { accessSync, chmodSync, constants } from 'node:fs'
 import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
+
+function ensureExecutable (path) {
+  try {
+    accessSync(path, constants.X_OK)
+  } catch {
+    try {
+      chmodSync(path, 0o755)
+    } catch {}
+  }
+  return path
+}
 
 function isMusl () {
   if (process.platform !== 'linux') return false
@@ -21,7 +33,7 @@ export function resolveBinPath () {
   if (process.env.PINO_LOKI_BIN) return process.env.PINO_LOKI_BIN
   const pkg = platformPackageName()
   try {
-    return require.resolve(`${pkg}/pino-loki-rs`)
+    return ensureExecutable(require.resolve(`${pkg}/pino-loki-rs`))
   } catch {
     throw new Error(
       `pino-loki-rs: no prebuilt binary for ${process.platform}-${process.arch}. Install ${pkg}, set options.binPath, or set PINO_LOKI_BIN`

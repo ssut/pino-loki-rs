@@ -1,0 +1,17 @@
+{
+  "name": "pino-loki-rs",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    "./transport": "./js/transport.mjs"
+  },
+  "files": [
+    "js/",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}

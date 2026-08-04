@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+members = ["crates/pino-loki-rs", "crates/mock-loki"]
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "io-std", "io-util", "net"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+clap = { version = "4", features = ["derive", "env"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+fastrand = "2"
+bytes = "1"
+flate2 = "1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

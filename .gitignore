@@ -1,0 +1,6 @@
+target/
+node_modules/
+bench/tmp/
+bench/results/
+*.patch
+.DS_Store

@@ -1,4 +1,5 @@
 target/
+npm/*/pino-loki-rs
 node_modules/
 bench/tmp/
 bench/results/

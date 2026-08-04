@@ -9,7 +9,7 @@ jobs:
   rust:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -20,11 +20,12 @@ jobs:
   node:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
       - run: |
           for f in js/*.mjs scripts/*.mjs examples/ecs/*.mjs bench/*.mjs; do
             node --check "$f"
           done
+      - run: node --test test/*.test.mjs

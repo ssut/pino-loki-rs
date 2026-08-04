@@ -19,6 +19,9 @@
     "logging",
     "rust"
   ],
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
   "exports": {
     "./transport": "./js/transport.mjs",
     "./package.json": "./package.json"

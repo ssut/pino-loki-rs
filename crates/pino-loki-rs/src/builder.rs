@@ -127,7 +127,9 @@ fn convert_arrays(v: Value) -> Value {
                 .map(|(i, x)| (i.to_string(), convert_arrays(x)))
                 .collect(),
         ),
-        Value::Object(m) => Value::Object(m.into_iter().map(|(k, x)| (k, convert_arrays(x))).collect()),
+        Value::Object(m) => {
+            Value::Object(m.into_iter().map(|(k, x)| (k, convert_arrays(x))).collect())
+        }
         other => other,
     }
 }
@@ -291,7 +293,9 @@ mod tests {
     fn structured_meta_key_adds_third_tuple_element() {
         let mut b = base_builder();
         b.structured_meta_key = Some("meta".into());
-        let logs = vec![b.build(obj(json!({"level": 30, "meta": {"traceId": "t1"}, "msg": "x"})))];
+        let logs = vec![b.build(obj(
+            json!({"level": 30, "meta": {"traceId": "t1"}, "msg": "x"}),
+        ))];
         let (body, _) = payload(logs);
         let parsed: Value = serde_json::from_str(&body).unwrap();
         let value = &parsed["streams"][0]["values"][0];

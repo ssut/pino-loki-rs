@@ -148,7 +148,8 @@ mod tests {
 
     #[test]
     fn gzip_roundtrip_preserves_payload() {
-        let input = br#"{"streams":[{"stream":{"level":"info"},"values":[["1","{\"msg\":\"x\"}"]]}]}"#;
+        let input =
+            br#"{"streams":[{"stream":{"level":"info"},"values":[["1","{\"msg\":\"x\"}"]]}]}"#;
         let compressed = compress_gzip(input);
         assert!(compressed.len() < input.len() * 2);
         let mut decoder = flate2::read::GzDecoder::new(compressed.as_slice());

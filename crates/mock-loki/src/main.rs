@@ -5,12 +5,12 @@ use std::time::Duration;
 use axum::body::{Body, Bytes};
 use axum::extract::{DefaultBodyLimit, State};
 use axum::http::{HeaderMap, StatusCode, Version};
-use std::io::Read;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use clap::Parser;
 use serde_json::Value;
+use std::io::Read;
 
 #[derive(Parser, Clone)]
 #[command(name = "mock-loki", version)]
@@ -50,13 +50,19 @@ async fn push(
 ) -> Response {
     state.counters.requests.fetch_add(1, Ordering::Relaxed);
     if version == Version::HTTP_2 {
-        state.counters.requests_http2.fetch_add(1, Ordering::Relaxed);
+        state
+            .counters
+            .requests_http2
+            .fetch_add(1, Ordering::Relaxed);
     }
     if state.opts.latency_ms > 0 {
         tokio::time::sleep(Duration::from_millis(state.opts.latency_ms)).await;
     }
     if state.opts.fail_rate > 0.0 && fastrand::f64() < state.opts.fail_rate {
-        state.counters.injected_failures.fetch_add(1, Ordering::Relaxed);
+        state
+            .counters
+            .injected_failures
+            .fetch_add(1, Ordering::Relaxed);
         let mut builder = Response::builder().status(
             StatusCode::from_u16(state.opts.fail_status).unwrap_or(StatusCode::TOO_MANY_REQUESTS),
         );
@@ -67,7 +73,10 @@ async fn push(
             .body(Body::from("injected failure"))
             .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response());
     }
-    state.counters.bytes.fetch_add(body.len() as u64, Ordering::Relaxed);
+    state
+        .counters
+        .bytes
+        .fetch_add(body.len() as u64, Ordering::Relaxed);
     let gzipped = headers
         .get("content-encoding")
         .and_then(|v| v.to_str().ok())
@@ -152,6 +161,9 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
         .await
         .expect("bind failed");
-    eprintln!("{}", serde_json::json!({"event": "mock_ready", "port": port}));
+    eprintln!(
+        "{}",
+        serde_json::json!({"event": "mock_ready", "port": port})
+    );
     axum::serve(listener, app).await.expect("serve failed");
 }

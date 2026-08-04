@@ -1,14 +1,22 @@
 {
   "name": "pino-loki-rs-linux-x64-gnu",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "pino-loki-rs prebuilt binary for linux x64 (glibc)",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ssut/pino-loki-rs.git"
   },
-  "os": ["linux"],
-  "cpu": ["x64"],
-  "libc": ["glibc"],
-  "files": ["pino-loki-rs"]
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "libc": [
+    "glibc"
+  ],
+  "files": [
+    "pino-loki-rs"
+  ]
 }

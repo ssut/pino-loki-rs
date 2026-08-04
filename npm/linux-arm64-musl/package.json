@@ -1,14 +1,22 @@
 {
   "name": "pino-loki-rs-linux-arm64-musl",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "pino-loki-rs prebuilt binary for linux arm64 (musl)",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ssut/pino-loki-rs.git"
   },
-  "os": ["linux"],
-  "cpu": ["arm64"],
-  "libc": ["musl"],
-  "files": ["pino-loki-rs"]
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "libc": [
+    "musl"
+  ],
+  "files": [
+    "pino-loki-rs"
+  ]
 }

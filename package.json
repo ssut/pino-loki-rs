@@ -1,6 +1,6 @@
 {
   "name": "pino-loki-rs",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Rust log shipper for pino to Grafana Loki: 2x throughput at 1/100th the memory, bounded queue, retries, gzip",
   "license": "Apache-2.0",
   "type": "module",
@@ -41,11 +41,11 @@
     "access": "public"
   },
   "optionalDependencies": {
-    "pino-loki-rs-linux-x64-gnu": "0.1.0",
-    "pino-loki-rs-linux-arm64-gnu": "0.1.0",
-    "pino-loki-rs-linux-x64-musl": "0.1.0",
-    "pino-loki-rs-linux-arm64-musl": "0.1.0",
-    "pino-loki-rs-darwin-arm64": "0.1.0",
-    "pino-loki-rs-darwin-x64": "0.1.0"
+    "pino-loki-rs-linux-x64-gnu": "1.0.0",
+    "pino-loki-rs-linux-arm64-gnu": "1.0.0",
+    "pino-loki-rs-linux-x64-musl": "1.0.0",
+    "pino-loki-rs-linux-arm64-musl": "1.0.0",
+    "pino-loki-rs-darwin-arm64": "1.0.0",
+    "pino-loki-rs-darwin-x64": "1.0.0"
   }
 }

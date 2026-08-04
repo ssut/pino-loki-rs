@@ -1,0 +1,10 @@
+{
+  "name": "pino-loki-bench",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "autocannon": "^8",
+    "pino": "^9",
+    "pino-loki": "2.4.0"
+  }
+}

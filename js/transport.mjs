@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process'
 import { Writable } from 'node:stream'
 
+import { resolveBinPath } from './resolve-bin.mjs'
+
 const VALUE_FLAGS = [
   ['host', '--host'],
   ['intervalMs', '--interval-ms'],
@@ -65,11 +67,11 @@ export function buildArgs (options) {
 
 export default function pinoLokiRsTransport (options = {}) {
   const opts = options || {}
-  if (!opts.binPath) throw new Error('pino-loki-rs transport: options.binPath is required')
   if (!opts.host) throw new Error('pino-loki-rs transport: options.host is required')
 
+  const binPath = opts.binPath || resolveBinPath()
   const args = buildArgs(opts)
-  const child = spawn(opts.binPath, args, { stdio: ['pipe', 'inherit', 'inherit'] })
+  const child = spawn(binPath, args, { stdio: ['pipe', 'inherit', 'inherit'] })
 
   let childExited = false
   let spawnFailed = false
@@ -156,7 +158,7 @@ export default function pinoLokiRsTransport (options = {}) {
   child.on('error', (err) => {
     spawnFailed = true
     childExited = true
-    diag({ phase: 'spawn', bin: opts.binPath, message: err && err.message })
+    diag({ phase: 'spawn', bin: binPath, message: err && err.message })
     releaseWrite(null)
     releaseFinal(null)
     if (!stream.destroyed) stream.destroy(err)
@@ -165,7 +167,7 @@ export default function pinoLokiRsTransport (options = {}) {
   child.on('exit', (code, signal) => {
     childExited = true
     if (code !== 0 && !opts.silenceErrors) {
-      diag({ phase: 'exit', bin: opts.binPath, code, signal: signal || null })
+      diag({ phase: 'exit', bin: binPath, code, signal: signal || null })
     }
     releaseWrite(null)
     releaseFinal(null)

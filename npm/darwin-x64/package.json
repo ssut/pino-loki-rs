@@ -1,0 +1,13 @@
+{
+  "name": "pino-loki-rs-darwin-x64",
+  "version": "0.1.0",
+  "description": "pino-loki-rs prebuilt binary for macos x64",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ssut/pino-loki-rs.git"
+  },
+  "os": ["darwin"],
+  "cpu": ["x64"],
+  "files": ["pino-loki-rs"]
+}

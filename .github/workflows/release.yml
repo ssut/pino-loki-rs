@@ -16,6 +16,7 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-24.04
             pkg: linux-x64-gnu
+            container: rust:1-bullseye
           - target: x86_64-unknown-linux-musl
             runner: ubuntu-24.04
             pkg: linux-x64-musl
@@ -23,6 +24,7 @@ jobs:
           - target: aarch64-unknown-linux-gnu
             runner: ubuntu-24.04-arm
             pkg: linux-arm64-gnu
+            container: rust:1-bullseye
           - target: aarch64-unknown-linux-musl
             runner: ubuntu-24.04-arm
             pkg: linux-arm64-musl
@@ -34,9 +36,11 @@ jobs:
             runner: macos-15-intel
             pkg: darwin-x64
     runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.container }}
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - if: ${{ !matrix.container }}
+        uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
       - if: matrix.musl
@@ -61,9 +65,9 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6.0.9
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -80,11 +84,9 @@ jobs:
           done
       - run: |
           for dir in npm/*/; do
-            pnpm publish "$dir" --access public --no-git-checks
+            npm publish "$dir" --access public
           done
-          pnpm publish . --access public --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          npm publish . --access public
       - uses: softprops/action-gh-release@v3
         with:
           files: artifacts/**/*.tar.gz

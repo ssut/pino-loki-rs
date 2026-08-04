@@ -52,6 +52,7 @@ pino-loki has no retry path, so every 429'd batch is lost. Measured on an 18-cor
 - At-most-once delivery where every drop moves a counter, never silent
 - Batches capped by size and interval, grouped into streams by label set
 - Bounded drain window on shutdown, sized to fit inside pino's 10s worker cap
+- Signals are advisory: SIGTERM/SIGINT/SIGHUP keep intake open until stdin EOF, a repeated signal forces the bounded drain
 - Optional gzip: bursts are sealed compressed in memory and pushed with Content-Encoding gzip
 - Multi-tenant Loki via X-Scope-OrgID, custom headers, basic auth
 - HTTP/1.1 and HTTP/2 (ALPN over TLS, `--http2` for prior-knowledge h2c)

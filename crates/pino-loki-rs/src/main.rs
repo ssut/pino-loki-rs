@@ -5,7 +5,7 @@ mod pusher;
 mod stats;
 
 use std::collections::BTreeMap;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -73,6 +73,47 @@ fn spawn_stats_reporter(cfg: &Config, stats: &Arc<Stats>, queue_len: &Arc<Atomic
     });
 }
 
+#[cfg(unix)]
+async fn recv_sig(sig: &mut Option<tokio::signal::unix::Signal>) {
+    match sig {
+        Some(s) => {
+            if s.recv().await.is_none() {
+                std::future::pending::<()>().await;
+            }
+        }
+        None => std::future::pending::<()>().await,
+    }
+}
+
+#[cfg(unix)]
+fn spawn_signal_watcher(force_quit: Arc<Notify>, force_flag: Arc<AtomicBool>) {
+    use tokio::signal::unix::{signal, SignalKind};
+    let mut term = signal(SignalKind::terminate()).ok();
+    let mut int = signal(SignalKind::interrupt()).ok();
+    let mut hup = signal(SignalKind::hangup()).ok();
+    if term.is_none() || int.is_none() || hup.is_none() {
+        tracing::warn!("signal_handler_install_partial");
+    }
+    tokio::spawn(async move {
+        let mut received: u32 = 0;
+        loop {
+            let name = tokio::select! {
+                _ = recv_sig(&mut term) => "SIGTERM",
+                _ = recv_sig(&mut int) => "SIGINT",
+                _ = recv_sig(&mut hup) => "SIGHUP",
+            };
+            received += 1;
+            if received == 1 {
+                tracing::warn!(signal = name, "signal_received_draining_on_eof");
+            } else {
+                tracing::warn!(signal = name, "signal_repeated_forcing_drain");
+                force_flag.store(true, Ordering::Relaxed);
+                force_quit.notify_one();
+            }
+        }
+    });
+}
+
 #[tokio::main]
 async fn main() {
     let cfg = Arc::new(Config::parse());
@@ -84,6 +125,11 @@ async fn main() {
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
         )
         .init();
+
+    let force_quit = Arc::new(Notify::new());
+    let force_flag = Arc::new(AtomicBool::new(false));
+    #[cfg(unix)]
+    spawn_signal_watcher(force_quit.clone(), force_flag.clone());
 
     let started = Instant::now();
     let extra_labels: BTreeMap<String, String> = cfg
@@ -172,8 +218,15 @@ async fn main() {
     ));
 
     let mut segments = BufReader::with_capacity(1 << 20, tokio::io::stdin()).split(b'\n');
-    loop {
-        match segments.next_segment().await {
+    'read: loop {
+        if force_flag.load(Ordering::Relaxed) {
+            break 'read;
+        }
+        let next = tokio::select! {
+            seg = segments.next_segment() => seg,
+            _ = force_quit.notified() => break 'read,
+        };
+        match next {
             Ok(Some(seg)) => {
                 if seg.is_empty() {
                     continue;
@@ -192,7 +245,13 @@ async fn main() {
                                 if queue_len.load(Ordering::Relaxed) < cfg.queue_cap {
                                     break;
                                 }
-                                waiter.await;
+                                tokio::select! {
+                                    _ = waiter.as_mut() => {}
+                                    _ = force_quit.notified() => {
+                                        stats.entries_dropped_queue.fetch_add(1, Ordering::Relaxed);
+                                        break 'read;
+                                    }
+                                }
                             },
                             DropPolicy::Newest => {
                                 if queue_len.load(Ordering::Relaxed) >= cfg.queue_cap {
@@ -239,4 +298,5 @@ async fn main() {
         "elapsed_ms": started.elapsed().as_millis() as u64,
     });
     eprintln!("{final_stats}");
+    std::process::exit(0);
 }

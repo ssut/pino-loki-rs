@@ -23,8 +23,8 @@ COPY js/transport.mjs /opt/pino-loki-rs/transport.mjs
 
 WORKDIR /app
 
-COPY examples/ecs/package.json examples/ecs/package-lock.json ./
-RUN npm ci --omit=dev
+COPY examples/ecs/package.json examples/ecs/pnpm-lock.yaml ./
+RUN corepack enable pnpm && pnpm install --prod --frozen-lockfile
 
 COPY examples/ecs/server.example.mjs ./server.mjs
 

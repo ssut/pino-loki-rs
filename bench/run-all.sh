@@ -11,7 +11,7 @@ echo "binaries ok"
 
 if [ ! -d node_modules ]; then
   echo "installing bench deps"
-  npm install --no-fund --no-audit || { echo "npm install failed"; exit 1; }
+  pnpm install || { echo "pnpm install failed"; exit 1; }
 fi
 echo "node_modules ok"
 

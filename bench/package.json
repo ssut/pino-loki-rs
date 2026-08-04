@@ -2,6 +2,7 @@
   "name": "pino-loki-bench",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@11.18.0",
   "dependencies": {
     "autocannon": "^8",
     "pino": "^9",

@@ -35,6 +35,16 @@ fn past_drain_deadline(drain_deadline: &AtomicU64, delay: Duration) -> bool {
     deadline != 0 && epoch_ms().saturating_add(delay.as_millis() as u64) > deadline
 }
 
+async fn drain_deadline_expired(drain_deadline: &AtomicU64) {
+    loop {
+        let deadline = drain_deadline.load(Ordering::Relaxed);
+        if deadline != 0 && epoch_ms() >= deadline {
+            return;
+        }
+        sleep(Duration::from_millis(100)).await;
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn push(
     client: reqwest::Client,
@@ -49,6 +59,10 @@ pub async fn push(
     let started = Instant::now();
     let mut attempt: u32 = 0;
     loop {
+        if past_drain_deadline(&drain_deadline, Duration::ZERO) {
+            drop_batch(&cfg, &stats, entries, attempt, "drain_deadline_exceeded");
+            return;
+        }
         let mut req = client
             .post(url.as_str())
             .header("Content-Type", "application/json")
@@ -59,10 +73,19 @@ pub async fn push(
         if let (Some(u), Some(p)) = (&cfg.basic_auth_user, &cfg.basic_auth_password) {
             req = req.basic_auth(u, Some(p));
         }
-        match req.send().await {
+        let sent = tokio::select! {
+            resp = req.send() => resp,
+            _ = drain_deadline_expired(&drain_deadline) => {
+                drop_batch(&cfg, &stats, entries, attempt, "drain_deadline_exceeded");
+                return;
+            }
+        };
+        match sent {
             Ok(resp) if resp.status().is_success() => {
                 stats.batches_sent.fetch_add(1, Ordering::Relaxed);
-                stats.entries_delivered.fetch_add(entries, Ordering::Relaxed);
+                stats
+                    .entries_delivered
+                    .fetch_add(entries, Ordering::Relaxed);
                 tracing::debug!(
                     entries,
                     attempt,
@@ -78,7 +101,13 @@ pub async fn push(
                     .get("retry-after")
                     .and_then(|v| v.to_str().ok())
                     .and_then(|s| s.parse::<u64>().ok());
-                let body_text = resp.text().await.unwrap_or_default();
+                let body_text = tokio::select! {
+                    text = resp.text() => text.unwrap_or_default(),
+                    _ = drain_deadline_expired(&drain_deadline) => {
+                        drop_batch(&cfg, &stats, entries, attempt, "drain_deadline_exceeded");
+                        return;
+                    }
+                };
                 if classify(status) == RetryDecision::Drop || attempt >= cfg.max_retries {
                     drop_batch(
                         &cfg,
@@ -93,7 +122,8 @@ pub async fn push(
                     return;
                 }
                 attempt += 1;
-                let delay = backoff_delay(attempt, retry_after, cfg.retry_base_ms, cfg.retry_max_ms);
+                let delay =
+                    backoff_delay(attempt, retry_after, cfg.retry_base_ms, cfg.retry_max_ms);
                 if past_drain_deadline(&drain_deadline, delay) {
                     drop_batch(&cfg, &stats, entries, attempt, "drain_deadline_exceeded");
                     return;
@@ -108,7 +138,13 @@ pub async fn push(
                         "push_retry"
                     );
                 }
-                sleep(delay).await;
+                tokio::select! {
+                    _ = sleep(delay) => {}
+                    _ = drain_deadline_expired(&drain_deadline) => {
+                        drop_batch(&cfg, &stats, entries, attempt, "drain_deadline_exceeded");
+                        return;
+                    }
+                }
             }
             Err(e) => {
                 if attempt >= cfg.max_retries {
@@ -131,14 +167,22 @@ pub async fn push(
                         "push_retry"
                     );
                 }
-                sleep(delay).await;
+                tokio::select! {
+                    _ = sleep(delay) => {}
+                    _ = drain_deadline_expired(&drain_deadline) => {
+                        drop_batch(&cfg, &stats, entries, attempt, "drain_deadline_exceeded");
+                        return;
+                    }
+                }
             }
         }
     }
 }
 
 fn drop_batch(cfg: &Config, stats: &Stats, entries: u64, attempt: u32, reason: &str) {
-    stats.batches_dropped_delivery.fetch_add(1, Ordering::Relaxed);
+    stats
+        .batches_dropped_delivery
+        .fetch_add(1, Ordering::Relaxed);
     stats
         .entries_dropped_delivery
         .fetch_add(entries, Ordering::Relaxed);
@@ -154,7 +198,10 @@ pub fn backoff_delay(
     max_ms: u64,
 ) -> Duration {
     if let Some(secs) = retry_after_secs {
-        return Duration::from_millis(secs.saturating_mul(1000).clamp(base_ms, max_ms.max(base_ms)));
+        return Duration::from_millis(
+            secs.saturating_mul(1000)
+                .clamp(base_ms, max_ms.max(base_ms)),
+        );
     }
     let shift = attempt.min(16);
     let exp = base_ms.saturating_mul(1u64 << shift);
@@ -226,5 +273,24 @@ mod tests {
     fn drain_deadline_in_past_blocks() {
         let deadline = AtomicU64::new(1);
         assert!(past_drain_deadline(&deadline, Duration::from_millis(10)));
+    }
+
+    #[tokio::test]
+    async fn deadline_expired_completes_when_armed_in_past() {
+        let deadline = AtomicU64::new(1);
+        tokio::time::timeout(Duration::from_secs(1), drain_deadline_expired(&deadline))
+            .await
+            .expect("armed deadline should resolve");
+    }
+
+    #[tokio::test]
+    async fn deadline_expired_pends_while_unarmed() {
+        let deadline = AtomicU64::new(0);
+        let waited = tokio::time::timeout(
+            Duration::from_millis(250),
+            drain_deadline_expired(&deadline),
+        )
+        .await;
+        assert!(waited.is_err());
     }
 }

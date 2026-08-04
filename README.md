@@ -2,7 +2,9 @@
 
 Rust rewrite of [pino-loki](https://github.com/Julien-R44/pino-loki): ships [pino](https://getpino.io) logs to [Grafana Loki](https://grafana.com/oss/loki/) from a separate process.
 
-The Node side pipes raw NDJSON to a small Rust binary. Parsing, batching, retrying, and HTTP all happen outside your app's heap and event loop. The point is a lower memory footprint and lower CPU consumption than the in-process JS transport — with delivery guarantees it doesn't have.
+The Node side pipes raw NDJSON to a small Rust binary. Parsing, batching, retrying, and HTTP all happen outside your app's heap and event loop.
+
+**2x the shipping throughput at 1/100th the memory, on the same CPU budget.** 0% log loss where the JS transport silently drops 20-30% under Loki backpressure. Optional gzip cuts wire bytes up to 13x at no measurable CPU cost. Receipts below.
 
 ## Numbers
 
@@ -58,11 +60,11 @@ pino-loki has no retry path, so every 429'd batch is lost. Measured on an 18-cor
 
 ## Usage
 
-Build the binary, then point pino at the transport:
-
 ```bash
-cargo build --release   # target/release/pino-loki-rs
+pnpm add pino-loki-rs
 ```
+
+Prebuilt binaries install automatically for linux x64/arm64 (glibc and musl) and macos x64/arm64. Anything else: `cargo build --release`, then pass `binPath` or set `PINO_LOKI_BIN`.
 
 ```js
 import pino from 'pino'
@@ -70,7 +72,6 @@ import pino from 'pino'
 const logger = pino(pino.transport({
   target: 'pino-loki-rs/transport',
   options: {
-    binPath: '/usr/local/bin/pino-loki-rs',
     host: 'https://loki.example.com',
     tenant: 'my-tenant',
     labels: { app: 'my-service' }
@@ -78,7 +79,7 @@ const logger = pino(pino.transport({
 }))
 ```
 
-Vendor the repo or install it from a git/file source; `target` also accepts an absolute path to `js/transport.mjs`. Option names are the camelCase form of the CLI flags.
+Option names are the camelCase form of the CLI flags; `target` also accepts an absolute path to `js/transport.mjs` when vendoring.
 
 Or skip the transport entirely and pipe:
 

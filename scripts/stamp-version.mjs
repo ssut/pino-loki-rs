@@ -18,7 +18,19 @@ const stamp = (path) => {
   process.stderr.write(`${JSON.stringify({ event: 'stamped', path, version })}\n`)
 }
 
+const stampCargo = (path) => {
+  const src = readFileSync(path, 'utf8')
+  const out = src.replace(/^version = "[^"]*"$/m, `version = "${version}"`)
+  if (out === src) {
+    process.stderr.write(`${JSON.stringify({ event: 'stamp_error', path, message: 'package version line not found' })}\n`)
+    process.exit(1)
+  }
+  writeFileSync(path, out)
+  process.stderr.write(`${JSON.stringify({ event: 'stamped', path, version })}\n`)
+}
+
 stamp('package.json')
 for (const dir of readdirSync('npm')) {
   stamp(`npm/${dir}/package.json`)
 }
+stampCargo('crates/pino-loki-rs/Cargo.toml')

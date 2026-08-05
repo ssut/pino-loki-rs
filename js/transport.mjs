@@ -65,16 +65,29 @@ export function buildArgs (options) {
   return args
 }
 
+function positive (value, fallback) {
+  const n = Number(value)
+  return Number.isFinite(n) && n >= 0 ? n : fallback
+}
+
 export default function pinoLokiRsTransport (options = {}) {
   const opts = options || {}
   if (!opts.host) throw new Error('pino-loki-rs transport: options.host is required')
 
   const binPath = opts.binPath || resolveBinPath()
   const args = buildArgs(opts)
-  const child = spawn(binPath, args, { stdio: ['pipe', 'inherit', 'inherit'] })
+  const maxRespawns = positive(opts.maxRespawns, 10)
+  const respawnBaseMs = positive(opts.respawnBaseMs, 200)
+  const respawnMaxMs = positive(opts.respawnMaxMs, 30000)
 
-  let childExited = false
+  let child = null
+  let live = false
+  let ending = false
+  let closed = false
   let spawnFailed = false
+  let respawns = 0
+  let respawnTimer = null
+  let droppedWhileDown = 0
   let pendingWriteCb = null
   let finalCb = null
 
@@ -86,7 +99,7 @@ export default function pinoLokiRsTransport (options = {}) {
     if (pendingWriteCb === null) return
     const cb = pendingWriteCb
     pendingWriteCb = null
-    if (child.stdin) child.stdin.removeListener('drain', onDrain)
+    if (child && child.stdin) child.stdin.removeListener('drain', onDrain)
     cb(err || null)
   }
 
@@ -97,19 +110,99 @@ export default function pinoLokiRsTransport (options = {}) {
     cb(err || null)
   }
 
+  function cancelRespawn () {
+    if (respawnTimer === null) return
+    clearTimeout(respawnTimer)
+    respawnTimer = null
+  }
+
+  function scheduleRespawn () {
+    if (closed || ending || respawnTimer !== null) return
+    if (respawns >= maxRespawns) {
+      diag({ phase: 'respawn_exhausted', bin: binPath, attempts: respawns, dropped: droppedWhileDown })
+      return
+    }
+    respawns += 1
+    const delayMs = Math.min(respawnBaseMs * 2 ** (respawns - 1), respawnMaxMs)
+    if (!opts.silenceErrors) diag({ phase: 'respawn_scheduled', bin: binPath, attempt: respawns, delayMs })
+    respawnTimer = setTimeout(() => {
+      respawnTimer = null
+      start()
+    }, delayMs)
+    if (typeof respawnTimer.unref === 'function') respawnTimer.unref()
+  }
+
+  function start () {
+    if (closed || ending) return
+    let proc
+    try {
+      proc = spawn(binPath, args, { stdio: ['pipe', 'inherit', 'inherit'] })
+    } catch (err) {
+      live = false
+      diag({ phase: 'spawn', bin: binPath, message: err && err.message })
+      scheduleRespawn()
+      return
+    }
+    child = proc
+    live = true
+    if (respawns > 0) {
+      diag({ phase: 'respawned', bin: binPath, attempt: respawns, dropped: droppedWhileDown })
+    }
+
+    proc.stdin.on('error', (err) => {
+      if (proc !== child) return
+      live = false
+      const code = err && err.code
+      if (code !== 'EPIPE' && code !== 'ERR_STREAM_DESTROYED' && !opts.silenceErrors) {
+        diag({ phase: 'stdin', code: code || null, message: err && err.message })
+      }
+      releaseWrite(null)
+    })
+
+    proc.on('error', (err) => {
+      if (proc !== child) return
+      live = false
+      diag({ phase: 'spawn', bin: binPath, message: err && err.message })
+      releaseWrite(null)
+      if (respawns === 0) {
+        spawnFailed = true
+        releaseFinal(null)
+        if (!stream.destroyed) stream.destroy(err)
+        return
+      }
+      scheduleRespawn()
+    })
+
+    proc.on('exit', (code, signal) => {
+      if (proc !== child) return
+      live = false
+      if (code !== 0 && !opts.silenceErrors) {
+        diag({ phase: 'exit', bin: binPath, code, signal: signal || null })
+      }
+      releaseWrite(null)
+      if (ending || closed) {
+        releaseFinal(null)
+        return
+      }
+      scheduleRespawn()
+    })
+  }
+
   const stream = new Writable({
     decodeStrings: false,
     autoDestroy: true,
     write (chunk, encoding, callback) {
-      if (childExited || spawnFailed) {
+      if (closed || !live || !child || !child.stdin || child.stdin.destroyed) {
+        droppedWhileDown += 1
         callback(null)
         return
       }
       let flushed = false
       try {
         flushed = child.stdin.write(chunk)
-      } catch (err) {
-        callback(err)
+      } catch {
+        droppedWhileDown += 1
+        callback(null)
         return
       }
       if (flushed) {
@@ -120,58 +213,36 @@ export default function pinoLokiRsTransport (options = {}) {
       child.stdin.once('drain', onDrain)
     },
     final (callback) {
+      ending = true
+      cancelRespawn()
       finalCb = callback
-      if (spawnFailed) {
+      if (spawnFailed || child === null) {
         releaseFinal(null)
         return
       }
       try {
         child.stdin.end()
       } catch {}
-      if (childExited) releaseFinal(null)
+      if (!live) releaseFinal(null)
     },
     destroy (err, callback) {
-      if (child.stdin) child.stdin.removeListener('drain', onDrain)
+      closed = true
+      cancelRespawn()
+      if (child && child.stdin) child.stdin.removeListener('drain', onDrain)
       pendingWriteCb = null
       finalCb = null
-      if (!childExited && !spawnFailed) {
+      if (child && live) {
         try { child.stdin.destroy() } catch {}
         try { child.kill('SIGTERM') } catch {}
+      }
+      if (droppedWhileDown > 0 && !opts.silenceErrors) {
+        diag({ phase: 'closed', bin: binPath, dropped: droppedWhileDown, respawns })
       }
       callback(err)
     }
   })
 
-  child.stdin.on('error', (err) => {
-    const code = err && err.code
-    if (code === 'EPIPE' || code === 'ERR_STREAM_DESTROYED') {
-      releaseWrite(null)
-      releaseFinal(null)
-      return
-    }
-    if (!opts.silenceErrors) diag({ phase: 'stdin', code: code || null, message: err && err.message })
-    releaseWrite(null)
-    releaseFinal(null)
-    if (!stream.destroyed) stream.destroy(err)
-  })
-
-  child.on('error', (err) => {
-    spawnFailed = true
-    childExited = true
-    diag({ phase: 'spawn', bin: binPath, message: err && err.message })
-    releaseWrite(null)
-    releaseFinal(null)
-    if (!stream.destroyed) stream.destroy(err)
-  })
-
-  child.on('exit', (code, signal) => {
-    childExited = true
-    if (code !== 0 && !opts.silenceErrors) {
-      diag({ phase: 'exit', bin: binPath, code, signal: signal || null })
-    }
-    releaseWrite(null)
-    releaseFinal(null)
-  })
+  start()
 
   return stream
 }

@@ -1,6 +1,6 @@
 {
   "name": "pino-loki-rs-linux-x64-gnu",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "pino-loki-rs prebuilt binary for linux x64 (glibc)",
   "license": "Apache-2.0",
   "repository": {

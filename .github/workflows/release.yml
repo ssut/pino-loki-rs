@@ -48,6 +48,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+      - run: |
+          V="${GITHUB_REF_NAME#v}"
+          awk -v v="$V" '!stamped && /^version = "/ { print "version = \"" v "\""; stamped=1; next } { print }' \
+            crates/pino-loki-rs/Cargo.toml > Cargo.toml.stamped
+          mv Cargo.toml.stamped crates/pino-loki-rs/Cargo.toml
+          grep -m1 '^version' crates/pino-loki-rs/Cargo.toml
       - run: cargo build --release -p pino-loki-rs --target ${{ matrix.target }}
       - run: |
           target/${{ matrix.target }}/release/pino-loki-rs --version || true
@@ -124,7 +130,7 @@ jobs:
             echo "{\"event\":\"registry_retry\",\"attempt\":$i}"
             sleep 15
           done
-          OUT=$(pnpm exec pino-loki-rs --version)
+          OUT=$(pnpm exec pino-loki-rs --version | tail -1)
           echo "{\"event\":\"bin_version\",\"out\":\"$OUT\"}"
           [ "$OUT" = "pino-loki-rs $VERSION" ]
           node --input-type=module -e "import('pino-loki-rs/transport').then(() => console.log('transport import ok'))"

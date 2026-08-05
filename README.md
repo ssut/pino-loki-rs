@@ -1,5 +1,7 @@
 # pino-loki-rs
 
+[![npm](https://img.shields.io/npm/v/pino-loki-rs.svg)](https://www.npmjs.com/package/pino-loki-rs)
+
 Rust rewrite of [pino-loki](https://github.com/Julien-R44/pino-loki): ships [pino](https://getpino.io) logs to [Grafana Loki](https://grafana.com/oss/loki/) from a separate process.
 
 The Node side pipes raw NDJSON to a small Rust binary. Parsing, batching, retrying, and HTTP all happen outside your app's heap and event loop.
@@ -53,11 +55,26 @@ pino-loki has no retry path, so every 429'd batch is lost. Measured on an 18-cor
 - Batches capped by size and interval, grouped into streams by label set
 - Bounded drain window on shutdown, sized to fit inside pino's 10s worker cap
 - Signals are advisory: SIGTERM/SIGINT/SIGHUP keep intake open until stdin EOF, a repeated signal forces the bounded drain
+- Shipper death is survivable: the transport respawns it with exponential backoff and never throws into your app
 - Optional gzip: bursts are sealed compressed in memory and pushed with Content-Encoding gzip
 - Multi-tenant Loki via X-Scope-OrgID, custom headers, basic auth
 - HTTP/1.1 and HTTP/2 (ALPN over TLS, `--http2` for prior-knowledge h2c)
 - Every flag doubles as a `PINO_LOKI_*` env var for container deployments
 - JSON diagnostics on stderr: periodic `stats_snapshot` plus a `final_stats` line at exit
+
+## Crash safety
+
+Anything already written to the pipe survives the app dying, because the shipper is a separate process that drains on stdin EOF. Measured with ~19k lines sitting in the shipper queue:
+
+```
+app SIGKILL              0 lost, orphan drains in ~350 ms
+Ctrl-C, group SIGINT     0 lost
+natural exit, exit(0)    0 lost
+```
+
+Signals are advisory, so a group SIGINT no longer kills the shipper mid-queue. Send it twice to force the bounded drain, or `SIGKILL` to stop hard. If the shipper itself dies, the transport respawns it (`maxRespawns`, `respawnBaseMs`, `respawnMaxMs`) and reports on stderr how many lines the gap cost.
+
+One limit worth knowing: in a container where Node is PID 1, a hard crash such as OOM or segfault takes down the whole PID namespace, shipper included, so whatever is still queued is gone. Lower `--interval-ms` if that window matters to you. Graceful SIGTERM shutdown is unaffected.
 
 ## Usage
 

@@ -20,12 +20,12 @@ const stamp = (path) => {
 
 const stampCargo = (path) => {
   const src = readFileSync(path, 'utf8')
-  const out = src.replace(/^version = "[^"]*"$/m, `version = "${version}"`)
-  if (out === src) {
+  const pattern = /^version = "[^"]*"$/m
+  if (!pattern.test(src)) {
     process.stderr.write(`${JSON.stringify({ event: 'stamp_error', path, message: 'package version line not found' })}\n`)
     process.exit(1)
   }
-  writeFileSync(path, out)
+  writeFileSync(path, src.replace(pattern, `version = "${version}"`))
   process.stderr.write(`${JSON.stringify({ event: 'stamped', path, version })}\n`)
 }
 

@@ -63,6 +63,7 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-24.04
+    environment: production
     permissions:
       contents: write
       id-token: write
@@ -83,10 +84,22 @@ jobs:
             chmod +x "$dir/pino-loki-rs"
           done
       - run: |
-          for dir in npm/*/; do
+          publish_once() {
+            local dir="$1"
+            local name version
+            name=$(node -p "require('./$dir/package.json').name")
+            version=$(node -p "require('./$dir/package.json').version")
+            if npm view "$name@$version" version > /dev/null 2>&1; then
+              echo "{\"event\":\"publish_skipped\",\"pkg\":\"$name@$version\"}"
+              return 0
+            fi
             npm publish "$dir" --access public
+            echo "{\"event\":\"publish_ok\",\"pkg\":\"$name@$version\"}"
+          }
+          for dir in npm/*/; do
+            publish_once "$dir"
           done
-          npm publish . --access public
+          publish_once .
       - uses: softprops/action-gh-release@v3
         with:
           files: artifacts/**/*.tar.gz
